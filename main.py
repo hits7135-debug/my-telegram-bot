@@ -263,4 +263,6 @@ def handle_inputs(message):
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     print("Bot Started...")
+    bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)
+    
