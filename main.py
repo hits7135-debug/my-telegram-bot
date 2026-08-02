@@ -196,7 +196,7 @@ def callback_listener(call):
 
     try:
         bot.answer_callback_query(call.id)
-    except:
+    except Exception:
         pass
 
     if action == "nav":
@@ -481,4 +481,4 @@ def handle_inputs(message):
             types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}")
         )
 
-        price = PRODUCTS[p_key]["prices"][d_
+        price = PRODUCTS[p_key]["p
