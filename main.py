@@ -43,15 +43,16 @@ DAYS_MAP = {
     "8bot": "8 Bot"
 }
 
-# Dynamic Stock Key Initialization
+# Local Data Storage
 stock_keys = {
     f"{p}:{d}": [] 
     for p, details in PRODUCTS.items() 
     for d in details["prices"].keys()
 }
 
-pending_orders = {}
+user_balances = {}
 user_orders = {}
+pending_orders = {}
 user_states = {}
 last_bot_messages = {}
 
@@ -64,32 +65,50 @@ def safe_delete(chat_id, message_id):
     except Exception:
         pass
 
-# Dynamic Welcome Message Generator
-def get_welcome_text(first_name):
+# Dynamic Welcome Text with Your Bot Name
+def get_welcome_text(user_id, first_name):
+    balance = user_balances.get(user_id, 0.0)
     return (
-        f"👋 Welcome, {first_name}\n\n"
-        "★ — 👑 Hassan X Mod Store 👑 — ★\n\n"
-        "🔑 Premium All Best Mod Keys\n"
-        "⚡ Instant Delivery 24/7\n"
-        "🔒 100% Secure Payment\n"
-        "🏷 Best Prices Guaranteed\n"
-        "🎁 High Discount Rewards\n"
-        "🎧 Active Support For Set-Up\n\n"
-        "🚀 Tap Shop Now To Start!"
+        f"🏪 — **HASSAN X MOD STORE** — 🏪\n\n"
+        f"🎉 ***Hello, {first_name}!***\n\n"
+        f"🗝 **Powered by Hassan X Mod Store**\n\n"
+        f"─ 🏪 **Direct deals with every supplier**\n"
+        f"─ 💧 **Instant delivery after payment**\n"
+        f"─ 🪙 **Guaranteed discounted prices**\n"
+        f"─ 📞 **24/7 admin support**\n\n"
+        f"***Tap any button below to begin.***\n\n"
+        f"🪙 **Your Balance: ₹{balance:.2f}**\n"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
     )
 
-# --- INLINE MENUS ---
+# Exact Buttons Grid
 def get_start_inline_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(types.InlineKeyboardButton("🛒 Shop Now", callback_data="nav:open_shop"))
+    
+    # Row 1
+    markup.add(types.InlineKeyboardButton("🛒 Buy Now", callback_data="nav:open_shop"))
+    
+    # Row 2
     markup.add(
-        types.InlineKeyboardButton("🔑 My Orders", callback_data="user:purchases"),
-        types.InlineKeyboardButton("👤 Profile", callback_data="user:profile")
+        types.InlineKeyboardButton("📣 Payment Proof", url="https://t.me/+T-QvHT2k8Pw4NTI9"),
+        types.InlineKeyboardButton("🪙 Add Balance", callback_data="user:add_balance")
     )
+    
+    # Row 3
+    markup.add(types.InlineKeyboardButton("👑 My Profile + All History", callback_data="user:profile"))
+    
+    # Row 4
     markup.add(
-        types.InlineKeyboardButton("❓ How to Use", callback_data="info:how_to_buy"),
-        types.InlineKeyboardButton("🎧 Support", callback_data="user:support")
+        types.InlineKeyboardButton("➡️ Refer And Earn", callback_data="user:refer"),
+        types.InlineKeyboardButton("📖 How To Use Bot", callback_data="info:how_to_buy")
     )
+    
+    # Row 5
+    markup.add(
+        types.InlineKeyboardButton("📞 Support", callback_data="user:support"),
+        types.InlineKeyboardButton("🎁 Daily Gift", callback_data="user:daily_gift")
+    )
+    
     return markup
 
 def get_main_panel_inline():
@@ -152,8 +171,11 @@ def webhook():
 def send_welcome(message):
     user_states[message.chat.id] = None
     first_name = message.from_user.first_name or "User"
-    welcome_text = get_welcome_text(first_name)
-    bot.send_message(message.chat.id, welcome_text, reply_markup=get_start_inline_menu())
+    if message.chat.id not in user_balances:
+        user_balances[message.chat.id] = 0.0
+        
+    welcome_text = get_welcome_text(message.chat.id, first_name)
+    bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=get_start_inline_menu())
 
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
@@ -162,7 +184,7 @@ def admin_command(message):
     else:
         bot.send_message(message.chat.id, "❌ **Access Denied!**")
 
-# --- CALLBACK HANDLER (EDIT MESSAGE SYSTEM) ---
+# --- CALLBACK HANDLER ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_listener(call):
     chat_id = call.message.chat.id
@@ -177,32 +199,57 @@ def callback_listener(call):
     except:
         pass
 
-    # Dynamic Editing System
     if action == "nav":
         sub = data[1]
         if sub == "open_shop":
             bot.edit_message_text("🛒 **Select Your Mod Panel:**", chat_id, message_id, parse_mode="Markdown", reply_markup=get_main_panel_inline())
         elif sub == "go_start":
-            welcome_text = get_welcome_text(first_name)
-            bot.edit_message_text(welcome_text, chat_id, message_id, reply_markup=get_start_inline_menu())
+            welcome_text = get_welcome_text(chat_id, first_name)
+            bot.edit_message_text(welcome_text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_start_inline_menu())
 
     elif action == "user":
         sub = data[1]
         if sub == "profile":
-            text = f"👤 **Profile Info**\n\nName: {call.from_user.first_name}\nUsername: @{call.from_user.username or 'None'}\nID: `{user_id}`"
-            bot.edit_message_text(text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_back_button())
-        elif sub == "purchases":
+            bal = user_balances.get(chat_id, 0.0)
+            history_str = "No active keys purchased yet."
             if chat_id in user_orders and user_orders[chat_id]:
-                orders_txt = "\n\n➖➖➖➖➖➖➖➖➖\n\n".join(user_orders[chat_id])
-                text = f"🔑 **Your Active Keys & Orders:**\n\n{orders_txt}"
-            else:
-                text = "🔑 **Your Orders:**\n\nYou haven't made any purchases yet."
+                history_str = "\n\n➖➖➖➖➖➖➖➖➖\n\n".join(user_orders[chat_id])
+                
+            text = (
+                f"👑 **MY PROFILE & HISTORY**\n\n"
+                f"👤 Name: {first_name}\n"
+                f"🆔 User ID: `{user_id}`\n"
+                f"💰 Balance: ₹{bal:.2f}\n\n"
+                f"🔑 **Purchased Orders:**\n{history_str}"
+            )
             bot.edit_message_text(text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_back_button(), disable_web_page_preview=True)
+            
+        elif sub == "add_balance":
+            text = (
+                "🪙 **Add Wallet Balance**\n\n"
+                "Send payment to UPI: `8171733966@fam`\n"
+                "After payment, contact admin @HassanXMods1 with payment screenshot to credit balance into your account!"
+            )
+            bot.edit_message_text(text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_back_button())
+            
+        elif sub == "refer":
+            bot_username = bot.get_me().username
+            ref_link = f"https://t.me/{bot_username}?start={chat_id}"
+            text = (
+                f"➡️ **REFER AND EARN**\n\n"
+                f"Share your referral link with friends:\n`{ref_link}`\n\n"
+                f"Earn bonus rewards for every friend who joins!"
+            )
+            bot.edit_message_text(text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_back_button())
+
+        elif sub == "daily_gift":
+            bot.answer_callback_query(call.id, "🎁 Daily gift claimed! Check back tomorrow.", show_alert=True)
+            
         elif sub == "support":
             text = (
-                "🎧 **Support Center**\n\n"
+                "📞 **Support Center**\n\n"
                 "👤 Telegram: @HassanXMods1\n"
-                "If you need any help, contact us on Telegram, explain your issue, and please wait for our reply."
+                "If you need any help, contact us on Telegram, explain your issue, and wait for our reply."
             )
             bot.edit_message_text(text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_back_button())
 
@@ -211,12 +258,11 @@ def callback_listener(call):
             bot.answer_callback_query(call.id, "This category is currently Sold Out!", show_alert=True)
         elif data[1] == "how_to_buy":
             text = (
-                "❓ **How to Use — Tutorial Video**\n\n"
-                "1. Click Shop Now.\n"
+                "📖 **How to Use — Tutorial Video**\n\n"
+                "1. Click Buy Now.\n"
                 "2. Select product & validity.\n"
                 "3. Pay exact amount via QR / UPI.\n"
-                "4. Get Instant Key Delivery.\n\n"
-                "Tap button below if you need more help!"
+                "4. Get Instant Key Delivery."
             )
             bot.edit_message_text(text, chat_id, message_id, parse_mode="Markdown", reply_markup=get_back_button())
 
@@ -237,12 +283,10 @@ def callback_listener(call):
             f"Please pay exact amount and send UTR / Screenshot here."
         )
         
-        # Fixed UPI Payment URI with Exact Price
         upi_uri = f"upi://pay?pa=8171733966@fam&pn=Harsaan%20Ali%20Khan&am={price}&cu=INR"
         encoded_upi_uri = urllib.parse.quote_plus(upi_uri)
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_upi_uri}"
         
-        # Safe edit/delete flow for QR
         safe_delete(chat_id, message_id)
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("✅ I Have Paid", callback_data=f"paid:{p_key}:{d_code}"))
@@ -326,12 +370,11 @@ def callback_listener(call):
                     f"⌛ Duration: {duration_str}\n"
                     f"🔑 Key: `{key}`\n\n"
                     f"🙏 Thank you for your purchase!\n\n"
-                    f"PANEL SETUP AND APK LINK  https://t.me/+T-QvHT2k8Pw4NTI9"
+                    f"PANEL SETUP AND APK LINK https://t.me/+T-QvHT2k8Pw4NTI9"
                 )
                 
                 bot.send_message(u_id, delivery_msg, parse_mode="Markdown", disable_web_page_preview=True)
                 
-                # Update User's "My Orders" History
                 if u_id not in user_orders:
                     user_orders[u_id] = []
                 
@@ -438,27 +481,4 @@ def handle_inputs(message):
             types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}")
         )
 
-        price = PRODUCTS[p_key]["prices"][d_code]
-        lbl = DAYS_MAP.get(d_code, d_code.upper())
-        admin_msg = (
-            f"📩 **New Payment Proof!**\n\n"
-            f"Order: `{order_id}`\n"
-            f"Panel: {PRODUCTS[p_key]['name']}\n"
-            f"Category: {lbl}\n"
-            f"Amount: ₹{price}\n"
-            f"User: @{message.from_user.username or 'NoUser'} (`{chat_id}`)"
-        )
-
-        if message.photo:
-            bot.send_photo(PRIMARY_ADMIN_ID, message.photo[-1].file_id, caption=admin_msg, parse_mode="Markdown", reply_markup=markup)
-        else:
-            bot.send_message(PRIMARY_ADMIN_ID, f"{admin_msg}\nProof/UTR: {message.text}", parse_mode="Markdown", reply_markup=markup)
-
-# --- WEBHOOK SETTER ---
-if __name__ == "__main__":
-    WEBHOOK_URL = f"https://my-telegram-bot-kamx.onrender.com/{TOKEN}"
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
-
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+        price = PRODUCTS[p_key]["prices"][d_
