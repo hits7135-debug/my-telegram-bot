@@ -19,6 +19,7 @@ DEFAULT_PRODUCTS = {
 }
 
 DEFAULT_DAYS_MAP = {
+    "1h": "1 Hour", "3h": "3 Hours", "6h": "6 Hours",
     "1d": "1 Day", "3d": "3 Days", "7d": "7 Days", 
     "15d": "15 Days", "30d": "30 Days", "4bot": "4 Bot", "8bot": "8 Bot"
 }
@@ -30,7 +31,7 @@ def load_data():
                 return json.load(f)
         except Exception:
             pass
-    return {"products": DEFAULT_PRODUCTS, "days_map": DEFAULT_DAYS_MAP, "stock": {}}
+    return {"products": DEFAULT_PRODUCTS, "days_map": DEFAULT_DAYS_MAP, "stock": {}, "users": []}
 
 def save_data(data):
     try:
@@ -43,6 +44,7 @@ db = load_data()
 PRODUCTS = db.get("products", DEFAULT_PRODUCTS)
 DAYS_MAP = db.get("days_map", DEFAULT_DAYS_MAP)
 stock_keys = db.get("stock", {})
+bot_users = db.get("users", [])
 
 pending_orders, user_orders, user_states, last_bot_messages = {}, {}, {}, {}
 
@@ -56,7 +58,7 @@ def safe_delete(chat_id, message_id):
         pass
 
 def sync_db():
-    save_data({"products": PRODUCTS, "days_map": DAYS_MAP, "stock": stock_keys})
+    save_data({"products": PRODUCTS, "days_map": DAYS_MAP, "stock": stock_keys, "users": list(set(bot_users))})
 
 def get_welcome_text(first_name):
     return (
@@ -116,11 +118,15 @@ def get_admin_panel():
     )
     markup.add(
         types.InlineKeyboardButton("⏳ Add Plan", callback_data="admin:add_plan"),
-        types.InlineKeyboardButton("💰 Update Price", callback_data="admin:select_price_panel")
+        types.InlineKeyboardButton("❌ Delete Plan", callback_data="admin:del_plan")
     )
     markup.add(
-        types.InlineKeyboardButton("🔑 Add Key Stock", callback_data="admin:add_key"),
-        types.InlineKeyboardButton("📊 View Stock", callback_data="admin:view_stock")
+        types.InlineKeyboardButton("💰 Update Price", callback_data="admin:select_price_panel"),
+        types.InlineKeyboardButton("🔑 Add Key Stock", callback_data="admin:add_key")
+    )
+    markup.add(
+        types.InlineKeyboardButton("📊 View Stock", callback_data="admin:view_stock"),
+        types.InlineKeyboardButton("📢 Broadcast Msg", callback_data="admin:broadcast")
     )
     return markup
 
@@ -140,12 +146,15 @@ def webhook():
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_states[message.chat.id] = None
+    if message.chat.id not in bot_users:
+        bot_users.append(message.chat.id)
+        sync_db()
     bot.send_message(message.chat.id, get_welcome_text(message.from_user.first_name or "User"), reply_markup=get_start_inline_menu())
 
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
     if is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "🛠️ **Full Dynamic Admin Panel**", parse_mode="Markdown", reply_markup=get_admin_panel())
+        bot.send_message(message.chat.id, "🛠️ **Full Dynamic Admin Control Panel**", parse_mode="Markdown", reply_markup=get_admin_panel())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_listener(call):
@@ -229,10 +238,22 @@ def callback_listener(call):
         elif sub == "add_plan":
             markup = types.InlineKeyboardMarkup(row_width=1)
             for pk, pv in PRODUCTS.items(): markup.add(types.InlineKeyboardButton(pv["name"], callback_data=f"admin:select_plan_panel:{pk}"))
-            bot.send_message(chat_id, "Select Panel:", reply_markup=markup)
+            bot.send_message(chat_id, "Select Panel to Add Plan:", reply_markup=markup)
+        elif sub == "del_plan":
+            markup = types.InlineKeyboardMarkup(row_width=1)
+            for pk, pv in PRODUCTS.items():
+                for dc in pv.get("prices", {}).keys():
+                    markup.add(types.InlineKeyboardButton(f"❌ {pv['name']} - {DAYS_MAP.get(dc, dc.upper())}", callback_data=f"admin:confirm_del_plan:{pk}:{dc}"))
+            bot.send_message(chat_id, "Select Plan to Delete:", reply_markup=markup)
+        elif sub == "confirm_del_plan":
+            pk, dc = data[2], data[3]
+            if pk in PRODUCTS and dc in PRODUCTS[pk]["prices"]:
+                del PRODUCTS[pk]["prices"][dc]
+                sync_db()
+                bot.send_message(chat_id, f"✅ Plan deleted successfully!", parse_mode="Markdown", reply_markup=get_admin_panel())
         elif sub == "select_plan_panel":
             user_states[chat_id] = f"ADDING_PLAN:{data[2]}"
-            bot.send_message(chat_id, "📝 Send: `code : Name : Price`\nEx: `1m : 1 Month : 1500`", parse_mode="Markdown")
+            bot.send_message(chat_id, "📝 Send: `code : Name : Price`\nEx: `1h : 1 Hour : 49`", parse_mode="Markdown")
         elif sub == "add_key":
             markup = types.InlineKeyboardMarkup(row_width=1)
             for pk, pv in PRODUCTS.items():
@@ -260,6 +281,9 @@ def callback_listener(call):
         elif sub == "editprice":
             user_states[chat_id] = f"UPDATING_PRICE:{data[2]}:{data[3]}"
             bot.send_message(chat_id, f"🔢 Send NEW PRICE (only numbers):", parse_mode="Markdown")
+        elif sub == "broadcast":
+            user_states[chat_id] = "BROADCAST_MSG"
+            bot.send_message(chat_id, "📢 Send message to broadcast to ALL bot users:", parse_mode="Markdown")
 
     elif action == "approve":
         if not is_admin(user_id): return
@@ -299,10 +323,10 @@ def handle_inputs(message):
     if current_state == "ADDING_PANEL" and is_admin(chat_id):
         try:
             pk, pn = message.text.split(":")
-            PRODUCTS[pk.strip().lower()] = {"name": pn.strip(), "prices": {"1d": 100, "3d": 250, "7d": 450}}
+            PRODUCTS[pk.strip().lower()] = {"name": pn.strip(), "prices": {}}
             sync_db()
             user_states[chat_id] = None
-            bot.send_message(chat_id, "✅ **New Panel Added!**", parse_mode="Markdown", reply_markup=get_admin_panel())
+            bot.send_message(chat_id, "✅ **New Panel Added!** Now add plans using `Add Plan` button.", parse_mode="Markdown", reply_markup=get_admin_panel())
         except Exception:
             bot.send_message(chat_id, "❌ Format Error! Use: `id : Name`")
 
@@ -335,6 +359,17 @@ def handle_inputs(message):
             user_states[chat_id] = None
             bot.send_message(chat_id, f"✅ **Key added! Total: {len(stock_keys[f'{pk}:{dc}'])}**", parse_mode="Markdown", reply_markup=get_admin_panel())
 
+    elif current_state == "BROADCAST_MSG" and is_admin(chat_id):
+        user_states[chat_id] = None
+        count = 0
+        for uid in bot_users:
+            try:
+                bot.send_message(uid, f"📢 **Announcement:**\n\n{message.text}", parse_mode="Markdown")
+                count += 1
+            except Exception:
+                pass
+        bot.send_message(chat_id, f"✅ **Broadcast Sent to {count} users!**", parse_mode="Markdown", reply_markup=get_admin_panel())
+
     elif current_state.startswith("WAITING_PROOF:"):
         _, pk, dc = current_state.split(":")
         order_id = f"ORD-{''.join(random.choices(string.digits, k=10))}"
@@ -359,3 +394,4 @@ if __name__ == "__main__":
     except Exception:
         pass
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    
