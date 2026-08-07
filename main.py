@@ -16,7 +16,6 @@ app = Flask(__name__)
 
 DATA_FILE = "store_data.json"
 
-# Default Initial Products
 DEFAULT_PRODUCTS = {
     "main_id": {
         "name": "🛒 MAIN ID PANEL",
@@ -46,7 +45,6 @@ DEFAULT_DAYS_MAP = {
     "8bot": "8 Bot"
 }
 
-# --- LOCAL FILE STORAGE HELPERS ---
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
@@ -67,7 +65,6 @@ def save_data(data):
     except Exception:
         pass
 
-# Initialize Data
 db = load_data()
 PRODUCTS = db.get("products", DEFAULT_PRODUCTS)
 DAYS_MAP = db.get("days_map", DEFAULT_DAYS_MAP)
@@ -94,7 +91,6 @@ def sync_db():
         "stock": stock_keys
     })
 
-# Dynamic Welcome Text
 def get_welcome_text(first_name):
     return (
         f"👋 Welcome, {first_name}\n\n"
@@ -108,7 +104,6 @@ def get_welcome_text(first_name):
         "🚀 Tap Shop Now To Start!"
     )
 
-# --- INLINE MENUS ---
 def get_start_inline_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(types.InlineKeyboardButton("🛒 Shop Now", callback_data="nav:open_shop"))
@@ -171,21 +166,19 @@ def get_admin_panel():
     )
     return markup
 
-# --- WEBHOOK ROUTES ---
 @app.route('/', methods=['GET'])
 def home():
-    return "Bot Webhook Server Active!"
+    return "Bot Server Active!"
 
-@app.route(f'/{TOKEN}', methods=['POST'])
+@app.route(f'/{TOKEN}', methods=['POST', 'GET'])
 def webhook():
-    if request.headers.get('content-type') == 'application/json':
+    if request.method == 'POST' and request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
         return 'OK', 200
-    return 'Forbidden', 403
+    return 'Active', 200
 
-# --- COMMANDS ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_states[message.chat.id] = None
@@ -200,7 +193,6 @@ def admin_command(message):
     else:
         bot.send_message(message.chat.id, "❌ **Access Denied!**")
 
-# --- CALLBACK HANDLER ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_listener(call):
     chat_id = call.message.chat.id
@@ -285,7 +277,6 @@ def callback_listener(call):
         msg = bot.send_message(chat_id, "📸 Send your **12-digit UTR / Transaction ID** or **Screenshot** here:")
         last_bot_messages[chat_id] = msg.message_id
 
-    # --- ADMIN ACTIONS ---
     elif action == "admin":
         if not is_admin(user_id):
             bot.answer_callback_query(call.id, "❌ Access Denied!", show_alert=True)
@@ -431,7 +422,6 @@ def callback_listener(call):
                     pass
             del pending_orders[order_id]
 
-# --- TEXT / PHOTO INPUT HANDLERS ---
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_inputs(message):
     chat_id = message.chat.id
@@ -440,7 +430,6 @@ def handle_inputs(message):
     if not current_state:
         return
 
-    # 1. ADD NEW PANEL
     if current_state == "ADDING_PANEL" and is_admin(chat_id):
         try:
             p_key, p_name = message.text.split(":")
@@ -458,7 +447,6 @@ def handle_inputs(message):
             bot.send_message(chat_id, "❌ Format Error! Use: `panel_id : Panel Name`\nExample: `vip_mod : ⚡ VIP MOD PANEL`")
         return
 
-    # 2. ADD NEW DURATION / PLAN
     if current_state.startswith("ADDING_PLAN:") and is_admin(chat_id):
         p_key = current_state.split(":")[1]
         try:
@@ -478,7 +466,13 @@ def handle_inputs(message):
             bot.send_message(chat_id, "❌ Format Error! Use: `plan_code : Plan Name : Price`\nExample: `1m : 1 Month : 1500`")
         return
 
-    # 3. UPDATE PRICE
     if current_state.startswith("UPDATING_PRICE:") and is_admin(chat_id):
         _, p_key, d_code = current_state.split(":")
-  
+        new_price_text = message.text.strip() if message.text else ""
+
+        if new_price_text.isdigit():
+            new_price = int(new_price_text)
+            PRODUCTS[p_key]["prices"][d_code] = new_price
+            sync_db()
+            user_states[chat_id] = None
+            lbl = DAYS_MAP.get(d_code, d_code.up
