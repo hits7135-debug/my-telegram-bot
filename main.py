@@ -1,4 +1,5 @@
 import os, json, random, string, urllib.parse, requests
+from threading import Thread
 from flask import Flask, request
 import telebot
 from telebot import types
@@ -412,5 +413,16 @@ def callback_listener(call):
             
             del pending_orders[order_id]
 
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
 if __name__ == '__main__':
-    from threading i
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+    
+    print("Bot starting polling...")
+    bot.infinity_polling(skip_pending=True)
+    
+ 
