@@ -3,7 +3,15 @@ from flask import Flask, request
 import telebot
 from telebot import types
 
-TOKEN = os.environ.get('BOT_TOKEN')
+# ----------------------------------------------------
+# 1. BOT TOKEN WITH AUTOMATIC STRIP FIX (NO SPACE ERROR)
+# ----------------------------------------------------
+RAW_TOKEN = os.environ.get('BOT_TOKEN', '')
+TOKEN = RAW_TOKEN.strip().replace('"', '').replace("'", '')
+
+if not TOKEN:
+    raise ValueError("BOT_TOKEN Environment Variable is missing in Render!")
+
 ADMIN_IDS = [7172828025, 8705494010]
 PRIMARY_ADMIN_ID = 7172828025
 
@@ -181,15 +189,6 @@ def get_admin_panel():
 @app.route('/', methods=['GET'])
 def home():
     return "Bot Server Active!"
-
-@app.route(f'/{TOKEN}', methods=['POST', 'GET'])
-def webhook():
-    if request.method == 'POST' and request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return 'OK', 200
-    return 'Active', 200
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -412,4 +411,6 @@ def callback_listener(call):
             except Exception: pass
             
             del pending_orders[order_id]
-        
+
+if __name__ == '__main__':
+    from threading i
