@@ -347,14 +347,16 @@ def callback_listener(call):
             dstr = DAYS_MAP.get(dc, dc.upper())
             cur_link = delivery_cfg.get("link", "https://t.me/+T-QvHT2k8Pw4NTI9")
             cur_footer = delivery_cfg.get("footer", "🙏 Thank you for your purchase!")
-            if pk == "bala_mod_pro":
+                        if pk == "bala_mod_pro":
                 usr_android_id = pending_android_ids.get(order_id, "0b9b969bc2e7997b")
                 generated_key = generate_api_key(dstr, usr_android_id)
-                if generated_key:
+                if generated_key and not generated_key.startswith("API Error") and "error" not in generated_key.lower():
                     key = generated_key
                 else:
-                    bot.send_message(chat_id, "⚠️ API Error! Could not generate key automatically.")
+                    bot.send_message(chat_id, "❌ **Key generation failed!**\nAPI Error 402")
+                    bot.send_message(uid, "❌ **Key generation failed!**\nAPI Error 402 (Insufficient Reseller Balance / Server Issue). Please contact support.")
                     return
+                
             else:
                 st_list = stock_keys.get(f"{pk}:{dc}", [])
                 if len(st_list) > 0:
