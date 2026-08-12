@@ -204,6 +204,55 @@ def admin_command(message):
     if is_admin(message.from_user.id):
         bot.send_message(message.chat.id, "🛠️ **Full Dynamic Admin Control Panel**", parse_mode="Markdown", reply_markup=get_admin_panel())
 
+# MESSAGE HANDLER FOR PAYMENT SCREENSHOT / ANDROID ID / ADMIN ACTIONS
+@bot.message_handler(content_types=['text', 'photo'])
+def handle_all_user_inputs(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    state = user_states.get(chat_id)
+
+    if state and str(state).startswith("WAITING_PROOF:"):
+        _, p_key, d_code = state.split(":")
+        order_id = f"ORD_{random.randint(1000, 9999)}"
+        pending_orders[order_id] = chat_id
+
+        if p_key == "bala_mod_pro":
+            # If text provided, save as Android ID / UTR
+            if message.content_type == 'text':
+                pending_android_ids[order_id] = message.text.strip()
+
+        # Create Admin Approval Buttons
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("✅ Approve", callback_data=f"approve:{order_id}:{p_key}:{d_code}"),
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"reject:{order_id}")
+        )
+
+        p_name = PRODUCTS.get(p_key, {}).get("name", "Panel")
+        d_label = DAYS_MAP.get(d_code, d_code)
+
+        admin_txt = (
+            f"📥 **NEW ORDER RECEIVED**\n\n"
+            f"👤 User: {message.from_user.first_name} (`{chat_id}`)\n"
+            f"🛒 Panel: {p_name}\n"
+            f"⌛ Validity: {d_label}\n"
+            f"🆔 Order ID: `{order_id}`\n"
+        )
+        if message.text:
+            admin_txt += f"📝 Note/Android ID: `{message.text}`\n"
+
+        for admin_id in ADMIN_IDS:
+            try:
+                if message.content_type == 'photo':
+                    bot.send_photo(admin_id, message.photo[-1].file_id, caption=admin_txt, parse_mode="Markdown", reply_markup=markup)
+                else:
+                    bot.send_message(admin_id, admin_txt, parse_mode="Markdown", reply_markup=markup)
+            except Exception:
+                pass
+
+        bot.send_message(chat_id, "✅ **Payment Proof Received!**\nYour payment is being verified by Admin. Key will be delivered shortly.")
+        user_states[chat_id] = None
+
 @bot.callback_query_handler(func=lambda call: True)
 def callback_listener(call):
     chat_id, user_id, message_id = call.message.chat.id, call.from_user.id, call.message.message_id
@@ -367,7 +416,7 @@ def callback_listener(call):
             user_states[chat_id] = "BROADCAST_MSG"
             bot.send_message(chat_id, "📢 Send message to broadcast (Text, Photo, Voice, Video, etc.):", parse_mode="Markdown")
 
-    elif action == "approve":
+ elif action == "approve":
         if not is_admin(user_id): return
         order_id, pk, dc = data[1], data[2], data[3]
         if order_id in pending_orders:
@@ -411,6 +460,16 @@ def callback_listener(call):
             try: bot.edit_message_caption(caption=call.message.caption + "\n\n✅ APPROVED", chat_id=chat_id, message_id=message_id, reply_markup=None)
             except Exception: pass
             
+            del pending_orders[order_id]
+
+    elif action == "reject":
+        if not is_admin(user_id): return
+        order_id = data[1]
+        if order_id in pending_orders:
+            uid = pending_orders[order_id]
+            bot.send_message(uid, "❌ **Payment Rejected!** Invalid screenshot or UTR. Please contact support.")
+            try: bot.edit_message_caption(caption=call.message.caption + "\n\n❌ REJECTED", chat_id=chat_id, message_id=message_id, reply_markup=None)
+            except Exception: pass
             del pending_orders[order_id]
 
 def run_flask():
