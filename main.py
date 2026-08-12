@@ -5,7 +5,7 @@ import telebot
 from telebot import types
 
 # ----------------------------------------------------
-# 1. BOT TOKEN WITH AUTOMATIC STRIP FIX (NO SPACE ERROR)
+# 1. BOT TOKEN WITH AUTOMATIC STRIP FIX
 # ----------------------------------------------------
 RAW_TOKEN = os.environ.get('BOT_TOKEN', '')
 TOKEN = RAW_TOKEN.strip().replace('"', '').replace("'", '')
@@ -422,7 +422,9 @@ if __name__ == '__main__':
     t.daemon = True
     t.start()
     
-    print("Bot starting polling...")
-    bot.infinity_polling(skip_pending=True)
+    try:
+        bot.remove_webhook()
+    except Exception:
+        pass
     
- 
+    bot.infinity_polling(skip_pending=True)
